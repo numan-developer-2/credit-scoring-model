@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: credit_scoring_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - SECRET_KEY=YOUR_SECRET_KEY_KEEP_IT_SAFE
+      - ACCESS_TOKEN_EXPIRE_MINUTES=11520 # 8 days
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: credit_scoring_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    # command: npm run dev -- --host 0.0.0.0
