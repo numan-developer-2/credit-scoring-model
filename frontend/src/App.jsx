@@ -1,13 +1,16 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useMemo, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
-import { Provider, useSelector } from 'react-redux';
+import { Provider, useSelector, useDispatch } from 'react-redux';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Toaster } from 'react-hot-toast';
 import store from './stores';
+import { loginSuccess, logout } from './stores/slices/authSlice';
+import authService from './services/authService';
 import { getTheme } from './styles/themes';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import LoadingScreen from './components/common/LoadingScreen';
+import ProtectedRoute from './components/common/ProtectedRoute';
 import './styles/global.css';
 
 // Lazy load pages
@@ -19,6 +22,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const CreditScoring = lazy(() => import('./pages/CreditScoring'));
 const Applications = lazy(() => import('./pages/Applications'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Analytics = lazy(() => import('./pages/Analytics'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,7 +34,26 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
+  const dispatch = useDispatch();
   const themeMode = useSelector((state) => state.theme.mode);
+  const { isAuthenticated } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const user = await authService.getCurrentUser();
+          dispatch(loginSuccess({ user, token }));
+        } catch (error) {
+          console.error('Session expired');
+          dispatch(logout());
+        }
+      }
+    };
+    initAuth();
+  }, [dispatch]);
+
   const theme = useMemo(() => getTheme(themeMode), [themeMode]);
 
   return (
@@ -46,12 +69,15 @@ function AppContent() {
               <Route path="/register" element={<Register />} />
 
               {/* Protected Routes */}
-              <Route path="/app" element={<Layout />}>
-                <Route index element={<Navigate to="/app/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="scoring" element={<CreditScoring />} />
-                <Route path="applications" element={<Applications />} />
-                <Route path="settings" element={<Settings />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/app" element={<Layout />}>
+                  <Route index element={<Navigate to="/app/dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="scoring" element={<CreditScoring />} />
+                  <Route path="applications" element={<Applications />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="analytics" element={<Analytics />} />
+                </Route>
               </Route>
 
               {/* Catch all */}

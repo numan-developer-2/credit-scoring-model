@@ -7,6 +7,7 @@ import {
   Typography,
   Paper,
   useTheme,
+  CircularProgress,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -14,6 +15,7 @@ import {
   CheckCircle,
   Warning,
 } from '@mui/icons-material';
+import analyticsService from '../../services/analyticsService';
 import {
   BarChart,
   Bar,
@@ -109,12 +111,46 @@ const StatCard = ({ title, value, trend, icon: Icon, color }) => {
 
 const Dashboard = () => {
   const theme = useTheme();
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    totalApplications: 356,
-    approvalRate: 75.3,
-    avgCreditScore: 695,
-    pendingReviews: 23,
+    totalApplications: 0,
+    approvalRate: 0,
+    avgCreditScore: 0,
+    pendingReviews: 0,
+    riskDistribution: [],
+    applicationTrends: [],
   });
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      setLoading(true);
+      try {
+        const data = await analyticsService.getDashboardStats();
+        setStats({
+          totalApplications: data.total_applications,
+          approvalRate: data.approval_rate,
+          avgCreditScore: data.average_credit_score,
+          pendingReviews: data.pending_reviews,
+          riskDistribution: data.risk_distribution || [],
+          applicationTrends: data.application_trends || [],
+        });
+      } catch (error) {
+        console.error('Failed to fetch dashboard stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -177,7 +213,7 @@ const Dashboard = () => {
               Application Trends
             </Typography>
             <ResponsiveContainer width="100%" height="90%">
-              <BarChart data={applicationTrends}>
+              <BarChart data={stats.applicationTrends}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
                 <XAxis dataKey="month" stroke={theme.palette.text.secondary} />
                 <YAxis stroke={theme.palette.text.secondary} />
@@ -214,7 +250,7 @@ const Dashboard = () => {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {riskDistribution.map((entry, index) => (
+                  {stats.riskDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>

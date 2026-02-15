@@ -13,6 +13,10 @@ import {
   Alert,
   useTheme,
   Divider,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   Calculate,
@@ -23,6 +27,7 @@ import {
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import toast from 'react-hot-toast';
+import scoringService from '../../services/scoringService';
 
 const validationSchema = Yup.object({
   applicantName: Yup.string()
@@ -61,122 +66,46 @@ const CreditScoring = () => {
     initialValues: {
       applicantName: '',
       email: '',
+      phoneNumber: '',
+      address: '',
       age: '',
       annualIncome: '',
-      creditAmount: '',
-      monthlyDebt: '',
+      employmentStatus: 'Employed',
       employmentYears: '',
+      creditAmount: '',
+      loanPurpose: 'Personal',
+      monthlyDebt: '',
       existingCredits: '',
+      dependents: '',
     },
     validationSchema,
     onSubmit: async (values) => {
       setLoading(true);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Calculate mock credit score
-      const score = calculateCreditScore(values);
-      const riskLevel = getRiskLevel(score);
-      const approvalProbability = getApprovalProbability(score);
-      const factors = getContributingFactors(values, score);
-      
-      setResult({
-        score,
-        riskLevel,
-        approvalProbability,
-        factors,
-      });
-      
-      setLoading(false);
-      toast.success('Credit score calculated successfully!');
+      try {
+        const application = await scoringService.calculateScore(values);
+        
+        setResult({
+          score: application.credit_score,
+          riskLevel: {
+            level: application.risk_level,
+            color: application.risk_level === 'Low' ? 'success' : application.risk_level === 'Medium' ? 'warning' : 'error'
+          },
+          approvalProbability: Math.round(application.approval_probability * 100),
+          factors: (application.risk_factors || []).map(f => ({ text: f, impact: 'negative' })),
+          modelUsed: application.model_version
+        });
+        
+        toast.success('Credit application submitted and scored!');
+      } catch (error) {
+        console.error(error);
+        toast.error(error.response?.data?.detail || 'Failed to calculate credit score');
+      } finally {
+        setLoading(false);
+      }
     },
   });
 
-  const calculateCreditScore = (values) => {
-    let score = 600; // Base score
-    
-    // Income factor
-    const income = parseFloat(values.annualIncome);
-    if (income > 100000) score += 100;
-    else if (income > 50000) score += 50;
-    else if (income > 30000) score += 25;
-    
-    // Debt-to-income ratio
-    const monthlyIncome = income / 12;
-    const debtRatio = parseFloat(values.monthlyDebt) / monthlyIncome;
-    if (debtRatio < 0.2) score += 50;
-    else if (debtRatio < 0.4) score += 25;
-    else if (debtRatio > 0.6) score -= 50;
-    
-    // Employment stability
-    const empYears = parseFloat(values.employmentYears);
-    if (empYears > 5) score += 40;
-    else if (empYears > 2) score += 20;
-    
-    // Age factor
-    const age = parseInt(values.age);
-    if (age >= 30 && age <= 50) score += 30;
-    else if (age > 50) score += 15;
-    
-    // Credit amount vs income
-    const creditRatio = parseFloat(values.creditAmount) / income;
-    if (creditRatio < 0.3) score += 30;
-    else if (creditRatio > 0.8) score -= 40;
-    
-    // Existing credits
-    const existing = parseInt(values.existingCredits);
-    if (existing === 0) score += 20;
-    else if (existing > 3) score -= 30;
-    
-    return Math.min(Math.max(score, 300), 850);
-  };
 
-  const getRiskLevel = (score) => {
-    if (score >= 700) return { level: 'Low', color: 'success' };
-    if (score >= 600) return { level: 'Medium', color: 'warning' };
-    return { level: 'High', color: 'error' };
-  };
-
-  const getApprovalProbability = (score) => {
-    if (score >= 750) return 95;
-    if (score >= 700) return 85;
-    if (score >= 650) return 70;
-    if (score >= 600) return 50;
-    if (score >= 550) return 30;
-    return 15;
-  };
-
-  const getContributingFactors = (values, score) => {
-    const factors = [];
-    const income = parseFloat(values.annualIncome);
-    const monthlyIncome = income / 12;
-    const debtRatio = parseFloat(values.monthlyDebt) / monthlyIncome;
-    
-    if (income > 75000) {
-      factors.push({ text: 'Strong annual income', impact: 'positive' });
-    } else if (income < 30000) {
-      factors.push({ text: 'Low annual income', impact: 'negative' });
-    }
-    
-    if (debtRatio < 0.3) {
-      factors.push({ text: 'Low debt-to-income ratio', impact: 'positive' });
-    } else if (debtRatio > 0.5) {
-      factors.push({ text: 'High debt-to-income ratio', impact: 'negative' });
-    }
-    
-    if (parseFloat(values.employmentYears) > 3) {
-      factors.push({ text: 'Stable employment history', impact: 'positive' });
-    }
-    
-    if (parseInt(values.existingCredits) === 0) {
-      factors.push({ text: 'No existing credits', impact: 'positive' });
-    } else if (parseInt(values.existingCredits) > 2) {
-      factors.push({ text: 'Multiple existing credits', impact: 'negative' });
-    }
-    
-    return factors;
-  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -227,6 +156,28 @@ const CreditScoring = () => {
                     helperText={formik.touched.email && formik.errors.email}
                   />
                 </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Phone Number"
+                    name="phoneNumber"
+                    value={formik.values.phoneNumber}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Residential Address"
+                    name="address"
+                    value={formik.values.address}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                  />
+                </Grid>
                 
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -255,6 +206,37 @@ const CreditScoring = () => {
                     helperText={formik.touched.annualIncome && formik.errors.annualIncome}
                   />
                 </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Employment Status</InputLabel>
+                    <Select
+                      name="employmentStatus"
+                      value={formik.values.employmentStatus}
+                      label="Employment Status"
+                      onChange={formik.handleChange}
+                    >
+                      <MenuItem value="Employed">Employed</MenuItem>
+                      <MenuItem value="Self-Employed">Self-Employed</MenuItem>
+                      <MenuItem value="Unemployed">Unemployed</MenuItem>
+                      <MenuItem value="Student">Student</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Years Employed"
+                    name="employmentYears"
+                    type="number"
+                    value={formik.values.employmentYears}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.employmentYears && Boolean(formik.errors.employmentYears)}
+                    helperText={formik.touched.employmentYears && formik.errors.employmentYears}
+                  />
+                </Grid>
                 
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -268,6 +250,24 @@ const CreditScoring = () => {
                     error={formik.touched.creditAmount && Boolean(formik.errors.creditAmount)}
                     helperText={formik.touched.creditAmount && formik.errors.creditAmount}
                   />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Loan Purpose</InputLabel>
+                    <Select
+                      name="loanPurpose"
+                      value={formik.values.loanPurpose}
+                      label="Loan Purpose"
+                      onChange={formik.handleChange}
+                    >
+                      <MenuItem value="Personal">Personal</MenuItem>
+                      <MenuItem value="Education">Education</MenuItem>
+                      <MenuItem value="Home Improvement">Home Improvement</MenuItem>
+                      <MenuItem value="Debt Consolidation">Debt Consolidation</MenuItem>
+                      <MenuItem value="Business">Business</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 
                 <Grid item xs={12} sm={6}>
@@ -287,20 +287,6 @@ const CreditScoring = () => {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Years Employed"
-                    name="employmentYears"
-                    type="number"
-                    value={formik.values.employmentYears}
-                    onChange={formik.handleChange}
-                    onBlur={formik.handleBlur}
-                    error={formik.touched.employmentYears && Boolean(formik.errors.employmentYears)}
-                    helperText={formik.touched.employmentYears && formik.errors.employmentYears}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
                     label="Existing Credits"
                     name="existingCredits"
                     type="number"
@@ -309,6 +295,18 @@ const CreditScoring = () => {
                     onBlur={formik.handleBlur}
                     error={formik.touched.existingCredits && Boolean(formik.errors.existingCredits)}
                     helperText={formik.touched.existingCredits && formik.errors.existingCredits}
+                  />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Number of Dependents"
+                    name="dependents"
+                    type="number"
+                    value={formik.values.dependents}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
                   />
                 </Grid>
                 

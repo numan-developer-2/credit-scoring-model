@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -20,22 +20,24 @@ import {
   InputLabel,
   Button,
   useTheme,
+  CircularProgress,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Divider,
 } from '@mui/material';
 import {
   Search,
   Visibility,
   FileDownload,
-  FilterList,
+  Close,
 } from '@mui/icons-material';
-
-// Mock data
-const mockApplications = [
-  { id: 1, name: 'John Doe', email: 'john@example.com', score: 720, risk: 'Low', status: 'Approved', date: '2024-01-15' },
-  { id: 2, name: 'Jane Smith', email: 'jane@example.com', score: 650, risk: 'Medium', status: 'Pending', date: '2024-01-14' },
-  { id: 3, name: 'Bob Johnson', email: 'bob@example.com', score: 580, risk: 'High', status: 'Rejected', date: '2024-01-13' },
-  { id: 4, name: 'Alice Williams', email: 'alice@example.com', score: 740, risk: 'Low', status: 'Approved', date: '2024-01-12' },
-  { id: 5, name: 'Charlie Brown', email: 'charlie@example.com', score: 620, risk: 'Medium', status: 'Pending', date: '2024-01-11' },
-];
+import { useQuery } from 'react-query';
+import api from '../../services/api';
+import { format } from 'date-fns';
 
 const Applications = () => {
   const theme = useTheme();
@@ -44,32 +46,145 @@ const Applications = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [riskFilter, setRiskFilter] = useState('all');
+  const [selectedApp, setSelectedApp] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  // Fetch applications from API
+  const { data: applications = [], isLoading, error, refetch } = useQuery(
+    'applications',
+    async () => {
+      try {
+        const response = await api.get('/applications/');
+        return response.data || [];
+      } catch (err) {
+        console.error('Failed to fetch applications:', err);
+        // If it's a 401, the interceptor will handle redirect
+        // For other errors, throw to show error state
+        if (err.response?.status !== 401) {
+          throw err;
+        }
+        return [];
+      }
+    },
+    {
+      retry: 1, // Only retry once
+      refetchOnWindowFocus: false, // Don't refetch on window focus
+      refetchInterval: false, // Disable auto-refresh for now
+      staleTime: 10000, // Consider data fresh for 10 seconds
+      onError: (err) => {
+        console.error('Applications query error:', err);
+      }
+    }
+  );
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Applications State:', {
+      isLoading,
+      hasError: !!error,
+      dataCount: applications?.length || 0,
+      applications: applications
+    });
+  }, [isLoading, error, applications]);
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Approved': return 'success';
-      case 'Rejected': return 'error';
-      case 'Pending': return 'warning';
+    switch (status?.toLowerCase()) {
+      case 'approved': return 'success';
+      case 'rejected': return 'error';
+      case 'pending': return 'warning';
       default: return 'default';
     }
   };
 
   const getRiskColor = (risk) => {
-    switch (risk) {
-      case 'Low': return 'success';
-      case 'Medium': return 'warning';
-      case 'High': return 'error';
+    switch (risk?.toLowerCase()) {
+      case 'low': return 'success';
+      case 'medium': return 'warning';
+      case 'high': return 'error';
       default: return 'default';
     }
   };
 
-  const filteredApplications = mockApplications.filter(app => {
-    const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         app.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
-    const matchesRisk = riskFilter === 'all' || app.risk === riskFilter;
+  const filteredApplications = applications.filter(app => {
+    const matchesSearch = app.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         app.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || app.status?.toLowerCase() === statusFilter.toLowerCase();
+    const matchesRisk = riskFilter === 'all' || app.risk_level?.toLowerCase() === riskFilter.toLowerCase();
     return matchesSearch && matchesStatus && matchesRisk;
   });
+
+  const handleViewDetails = (app) => {
+    setSelectedApp(app);
+    setDetailsOpen(true);
+  };
+
+  const handleExport = () => {
+    // Export to CSV
+    const csvContent = [
+      ['ID', 'Name', 'Email', 'Credit Score', 'Risk Level', 'Status', 'Model', 'Date'],
+      ...filteredApplications.map(app => [
+        app.id,
+        app.full_name,
+        app.email,
+        app.credit_score,
+        app.risk_level,
+        app.status,
+        app.model_version,
+        format(new Date(app.created_at), 'yyyy-MM-dd HH:mm')
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `applications_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+  };
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert 
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={() => refetch()}>
+              Retry
+            </Button>
+          }
+        >
+          Failed to load applications. {error?.response?.data?.detail || error.message || 'Please try again.'}
+        </Alert>
+      </Box>
+    );
+  }
+
+  // Check if no applications
+  if (!isLoading && (!applications || applications.length === 0)) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No Applications Found
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Submit a credit application from the Credit Scoring page to see results here.
+          </Typography>
+          <Button variant="contained" onClick={() => window.location.href = '/app/scoring'}>
+            Create Application
+          </Button>
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -107,9 +222,9 @@ const Applications = () => {
               label="Status"
             >
               <MenuItem value="all">All Status</MenuItem>
-              <MenuItem value="Approved">Approved</MenuItem>
-              <MenuItem value="Pending">Pending</MenuItem>
-              <MenuItem value="Rejected">Rejected</MenuItem>
+              <MenuItem value="approved">Approved</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
             </Select>
           </FormControl>
           
@@ -121,13 +236,13 @@ const Applications = () => {
               label="Risk Level"
             >
               <MenuItem value="all">All Risks</MenuItem>
-              <MenuItem value="Low">Low</MenuItem>
-              <MenuItem value="Medium">Medium</MenuItem>
-              <MenuItem value="High">High</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
             </Select>
           </FormControl>
           
-          <Button variant="outlined" startIcon={<FileDownload />}>
+          <Button variant="outlined" startIcon={<FileDownload />} onClick={handleExport}>
             Export
           </Button>
         </Box>
@@ -153,27 +268,46 @@ const Applications = () => {
                 .map((app) => (
                   <TableRow key={app.id} hover>
                     <TableCell>{app.id}</TableCell>
-                    <TableCell>{app.name}</TableCell>
+                    <TableCell>{app.full_name}</TableCell>
                     <TableCell>{app.email}</TableCell>
                     <TableCell>
                       <Typography fontWeight="600" color="primary.main">
-                        {app.score}
+                        {app.credit_score || 'N/A'}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip label={app.risk} color={getRiskColor(app.risk)} size="small" />
+                      {app.risk_level ? (
+                        <Chip label={app.risk_level} color={getRiskColor(app.risk_level)} size="small" />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">N/A</Typography>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Chip label={app.status} color={getStatusColor(app.status)} size="small" />
+                      <Chip 
+                        label={app.status || 'pending'} 
+                        color={getStatusColor(app.status)} 
+                        size="small" 
+                      />
                     </TableCell>
-                    <TableCell>{app.date}</TableCell>
                     <TableCell>
-                      <IconButton size="small" color="primary">
+                      {app.created_at ? format(new Date(app.created_at), 'MMM dd, yyyy HH:mm') : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <IconButton size="small" color="primary" onClick={() => handleViewDetails(app)}>
                         <Visibility />
                       </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
+              {filteredApplications.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">
+                    <Typography variant="body2" color="text.secondary" py={3}>
+                      No applications found
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>
@@ -190,6 +324,146 @@ const Applications = () => {
           }}
         />
       </Paper>
+
+      {/* Details Dialog */}
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Application Details</Typography>
+            <IconButton onClick={() => setDetailsOpen(false)}>
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedApp && (
+            <Grid container spacing={3}>
+              {/* Personal Information */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" fontWeight="600" gutterBottom>
+                  Personal Information
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Full Name</Typography>
+                <Typography variant="body1">{selectedApp.full_name}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Email</Typography>
+                <Typography variant="body1">{selectedApp.email}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Phone</Typography>
+                <Typography variant="body1">{selectedApp.phone_number || 'N/A'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Age</Typography>
+                <Typography variant="body1">{selectedApp.age}</Typography>
+              </Grid>
+
+              {/* Financial Information */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" fontWeight="600" gutterBottom sx={{ mt: 2 }}>
+                  Financial Information
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Annual Income</Typography>
+                <Typography variant="body1">${selectedApp.annual_income?.toLocaleString()}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Monthly Debt</Typography>
+                <Typography variant="body1">${selectedApp.monthly_debt?.toLocaleString()}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Loan Amount</Typography>
+                <Typography variant="body1">${selectedApp.loan_amount?.toLocaleString()}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Loan Purpose</Typography>
+                <Typography variant="body1">{selectedApp.loan_purpose}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Employment Status</Typography>
+                <Typography variant="body1">{selectedApp.employment_status}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Years Employed</Typography>
+                <Typography variant="body1">{selectedApp.years_employed}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Existing Credits</Typography>
+                <Typography variant="body1">{selectedApp.existing_credits || 0}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Dependents</Typography>
+                <Typography variant="body1">{selectedApp.dependents || 0}</Typography>
+              </Grid>
+
+              {/* Credit Scoring Results */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" fontWeight="600" gutterBottom sx={{ mt: 2 }}>
+                  Credit Scoring Results
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Credit Score</Typography>
+                <Typography variant="h4" color="primary.main" fontWeight="bold">
+                  {selectedApp.credit_score || 'N/A'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Risk Level</Typography>
+                <Box sx={{ mt: 1 }}>
+                  <Chip 
+                    label={selectedApp.risk_level || 'N/A'} 
+                    color={getRiskColor(selectedApp.risk_level)} 
+                  />
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Approval Probability</Typography>
+                <Typography variant="body1">
+                  {selectedApp.approval_probability 
+                    ? `${(selectedApp.approval_probability * 100).toFixed(1)}%` 
+                    : 'N/A'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">Status</Typography>
+                <Box sx={{ mt: 1 }}>
+                  <Chip 
+                    label={selectedApp.status || 'pending'} 
+                    color={getStatusColor(selectedApp.status)} 
+                  />
+                </Box>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">Model Version</Typography>
+                <Typography variant="body1">{selectedApp.model_version || 'N/A'}</Typography>
+              </Grid>
+              {selectedApp.risk_factors && selectedApp.risk_factors.length > 0 && (
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Risk Factors
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {selectedApp.risk_factors.map((factor, index) => (
+                      <Chip key={index} label={factor} color="warning" size="small" variant="outlined" />
+                    ))}
+                  </Box>
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
