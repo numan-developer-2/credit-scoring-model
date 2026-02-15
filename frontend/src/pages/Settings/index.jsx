@@ -14,18 +14,13 @@ import {
   Avatar,
   IconButton,
 } from '@mui/material';
-import {
-  Notifications,
-  Security,
-  Palette,
-  AccountCircle,
-  PhotoCamera,
-  Language,
-} from '@mui/icons-material';
+import { AccountCircle, PhotoCamera, Language, Palette, Security, Notifications } from '@mui/icons-material';
 import { useThemeMode } from '../../hooks/useThemeMode';
 import toast from 'react-hot-toast';
+import { useSelector } from 'react-redux';
 
 function Settings() {
+  const user = useSelector((state) => state.auth.user);
   const { mode, toggle } = useThemeMode();
   const [notifications, setNotifications] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -51,7 +46,7 @@ function Settings() {
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, mt: 2 }}>
           <Box sx={{ position: 'relative' }}>
             <Avatar sx={{ width: 80, height: 80, bgcolor: 'primary.main' }}>
-              JD
+              {user?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
             </Avatar>
             <IconButton
               sx={{
@@ -69,15 +64,15 @@ function Settings() {
             </IconButton>
           </Box>
           <Box sx={{ ml: 3 }}>
-            <Typography variant="h6">John Doe</Typography>
+            <Typography variant="h6">{user?.full_name || 'User'}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Administrator
+              {user?.is_superuser ? 'Administrator' : 'User'}
             </Typography>
           </Box>
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: { sm: '1fr 1fr' }, gap: 2 }}>
-          <TextField label="Full Name" defaultValue="John Doe" fullWidth />
-          <TextField label="Email Address" defaultValue="john.doe@example.com" fullWidth />
+          <TextField label="Full Name" value={user?.full_name || ''} fullWidth />
+          <TextField label="Email Address" value={user?.email || ''} fullWidth />
         </Box>
       </Paper>
 

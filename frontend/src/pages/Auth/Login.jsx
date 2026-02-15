@@ -25,6 +25,7 @@ import {
   ArrowBack,
 } from '@mui/icons-material';
 import { loginSuccess } from '../../stores/slices/authSlice';
+import authService from '../../services/authService';
 import toast from 'react-hot-toast';
 
 function Login() {
@@ -44,28 +45,20 @@ function Login() {
     setLoading(true);
 
     try {
-      // Mock login - replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const mockUser = {
-        id: 1,
-        name: 'John Doe',
-        email: formData.email,
-        role: 'admin',
-        avatar: null,
-      };
+      const loginData = await authService.login(formData.email, formData.password);
+      const user = await authService.getCurrentUser();
 
       dispatch(
         loginSuccess({
-          user: mockUser,
-          token: 'mock-jwt-token-' + Date.now(),
+          user: user,
+          token: loginData.access_token,
         })
       );
 
       toast.success('Welcome back! 🎉');
       navigate('/app/dashboard');
     } catch (error) {
-      toast.error('Invalid credentials. Please try again.');
+      toast.error(error.response?.data?.detail || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }

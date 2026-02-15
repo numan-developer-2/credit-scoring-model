@@ -25,6 +25,7 @@ import {
   ArrowBack,
   CheckCircle,
 } from '@mui/icons-material';
+import authService from '../../services/authService';
 import toast from 'react-hot-toast';
 
 function Register() {
@@ -75,13 +76,21 @@ function Register() {
     setLoading(true);
 
     try {
-      // Mock registration - replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await authService.register({
+        email: formData.email,
+        password: formData.password,
+        full_name: formData.fullName,
+      });
 
       toast.success('Account created successfully! 🎉');
       navigate('/login');
     } catch (error) {
-      toast.error('Registration failed. Please try again.');
+      const errorMsg = error.response?.data?.detail;
+      if (Array.isArray(errorMsg)) {
+        toast.error(errorMsg[0].msg);
+      } else {
+        toast.error(errorMsg || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
